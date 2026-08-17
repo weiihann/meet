@@ -1,0 +1,15 @@
+# Downloaded models (~1 GB) and vendored upstream source
+models/
+vendor/
+
+# Recordings and transcripts
+recordings/
+
+# User-specific vocabulary, seeded from defaults in glossary.py
+glossary.txt
+
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
