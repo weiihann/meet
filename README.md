@@ -89,7 +89,7 @@ transcribe ──> silero VAD ──> speech spans, silence dropped, capped at 3
            ──> merge tracks onto one clock, join turns ──> transcript.md
 
 summarize  ──> Qwen3.5-9B via MLX (or claude -p)
-           ──> Vault/Notes/YYYY-MM-DD Meeting - X.md
+           ──> Vault/Notes/YYYYMMDD Meeting - X.md
 ```
 
 Measured on an 18-minute meeting: 3m14s to transcribe, 33s to summarise locally.
@@ -153,22 +153,8 @@ amplitude threshold would report working hardware as broken.
 
 **The built-in mic is unavailable with the lid closed.** In clamshell mode the
 MacBook microphone returns digital silence -- confirmed through both ffmpeg and
-PortAudio, so it is a hardware/OS behaviour rather than a tool bug.
-
-macOS still reports that dead microphone as the *default input*, so `meet start`
-does not trust the default: it records half a second from each candidate device
-and picks the first that actually delivers audio, falling back through a headset
-or webcam mic. `meet devices` shows the same verdict per device:
-
-```
-$ meet devices
-  [0] MacBook Pro Microphone       SILENT
-  [1] UGREEN Camera 4K             signal  <- would record from this
-```
-
-If macOS shows no microphone indicator in the menu bar when you start recording,
-treat that as a real warning rather than a cosmetic quirk: it means nothing is
-being captured. Run `meet devices` to see which inputs are live.
+PortAudio, so it is a hardware/OS behaviour rather than a tool bug. Wear a headset
+or attach an external mic. `meet stop` warns when the microphone track is silent.
 
 **Do not change audio devices mid-recording.** ffmpeg holds one fixed
 avfoundation index for the whole session and audiotee taps only the default

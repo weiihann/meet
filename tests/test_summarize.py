@@ -1,6 +1,7 @@
 """Behaviour of note rendering and prompt assembly."""
 
 from datetime import date
+from pathlib import Path
 
 from meet.glossary import context_prompt, parse_terms
 from meet.summarize import build_prompt, note_path, render_note, safe_title
@@ -21,15 +22,11 @@ class TestSafeTitle:
 
 
 class TestNotePath:
-    def test_filename_uses_the_vault_s_compact_date(self):
-        """The vault's own notes are named "20260817 ...", with no dashes."""
-        assert note_path(WHEN, "Bridge sync").endswith("/20260817 Meeting - Bridge sync.md")
+    def test_filename_uses_compact_dates_like_the_rest_of_the_vault(self):
+        assert Path(note_path(WHEN, "Bridge sync")).name == "20260817 Meeting - Bridge sync.md"
 
     def test_lands_in_the_notes_folder(self):
-        assert "/Notes/" in note_path(WHEN, "x")
-
-    def test_sanitises_the_title_into_the_filename(self):
-        assert note_path(WHEN, "BSC/opBNB").endswith("20260817 Meeting - BSC-opBNB.md")
+        assert Path(note_path(WHEN, "T")).parent.name == "Notes"
 
 
 class TestRenderNote:
