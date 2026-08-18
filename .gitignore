@@ -1,0 +1,21 @@
+# Local configuration, created from .env.example by `meet setup`
+.env
+
+# Your own vocabulary, created from glossary.example.txt by `meet setup`
+glossary.txt
+
+# Downloaded models (up to ~1 GB) and cloned third-party source
+models/
+vendor/
+
+# Recordings and their transcripts
+recordings/
+
+# Notes written by the default configuration
+notes/
+
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/

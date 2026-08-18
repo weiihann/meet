@@ -1,0 +1,51 @@
+# Vocabulary handed to the speech recogniser as context.
+#
+# One term per line. Blank lines and lines starting with # are ignored.
+# Copy this to glossary.txt (meet setup does it for you) and edit freely --
+# glossary.txt is gitignored, so your own vocabulary stays local.
+#
+# What is worth adding:
+#   - colleagues' names, especially ones that sound like common words
+#   - product, service, and project names
+#   - acronyms and jargon your team says out loud
+#
+# This matters most for names embedded in another language. A product name
+# spoken inside a Mandarin sentence is the case that fails without a glossary
+# and succeeds with one.
+
+# --- People ---
+# Add the names you hear in meetings. Given names are usually enough.
+# Priya
+# Mateus
+# Wei
+
+# --- Products and projects ---
+# Acme
+# Northwind
+# Project Halyard
+
+# --- Infrastructure and tooling ---
+Kubernetes
+Postgres
+Terraform
+gRPC
+OAuth
+Redis
+Kafka
+CI
+staging
+rollback
+latency
+throughput
+p99
+
+# --- AI and speech ---
+Qwen
+Qwen3
+Qwen3-ASR
+Whisper
+SenseVoice
+ASR
+diarization
+MLX
+LLM

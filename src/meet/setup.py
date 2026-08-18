@@ -1,0 +1,269 @@
+"""One-time installation: configuration files, third-party binaries, models.
+
+Every step is idempotent and reports what it did, so running `meet setup` again
+after a partial failure resumes rather than repeating work.
+
+Downloads go through curl, which ships with macOS and retries on its own. The
+recognising and summarising models come from Hugging Face into its global cache,
+which is shared across projects, so a second checkout costs nothing.
+
+Those two models are several gigabytes together and are fetched by default:
+setup should leave the tool ready to run, rather than stalling the first meeting
+on a multi-gigabyte download. `--no-prefetch` defers them to first use.
+"""
+
+import os
+import shutil
+import subprocess
+import sys
+import tarfile
+from collections.abc import Callable
+from pathlib import Path
+
+from meet.config import (
+    ASR_MODEL_ID,
+    AUDIOTEE,
+    DOTENV_EXAMPLE,
+    DOTENV_NAME,
+    MODELS,
+    ROOT,
+    SENSE_VOICE_DIR,
+    SUMMARY_MODEL_ID,
+    VAD_MODEL,
+    VENDOR,
+)
+from meet.glossary import GLOSSARY_FILE, ensure_glossary_file
+
+AUDIOTEE_REPO = "https://github.com/makeusabrew/audiotee.git"
+
+_RELEASES = "https://github.com/k2-fsa/sherpa-onnx/releases/download"
+VAD_URL = f"{_RELEASES}/asr-models/silero_vad.onnx"
+SENSEVOICE_URL = (
+    f"{_RELEASES}/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2025-09-09.tar.bz2"
+)
+
+Report = Callable[[str], None]
+
+
+def _run(args: list[str], cwd: Path | None = None) -> None:
+    """Run a command, surfacing its output on failure.
+
+    Raises:
+        RuntimeError: If the command is missing or exits non-zero.
+    """
+    if shutil.which(args[0]) is None:
+        raise RuntimeError(f"{args[0]} is not installed but is needed for setup")
+    result = subprocess.run(args, cwd=cwd, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip().splitlines()
+        tail = "\n  ".join(detail[-5:]) if detail else "no output"
+        raise RuntimeError(f"{' '.join(args[:2])} failed:\n  {tail}")
+
+
+def _download(url: str, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    _run(["curl", "-fL", "--retry", "3", "-o", str(destination), url])
+
+
+def copy_template(name: str, destination: Path, report: Report) -> bool:
+    """Create `destination` from the template `name` if it is absent."""
+    if destination.exists():
+        report(f"  [ok]   {destination.name} already exists")
+        return False
+    template = ROOT / name
+    if not template.exists():
+        report(f"  [skip] {name} is missing from the project; cannot create {destination.name}")
+        return False
+    shutil.copyfile(template, destination)
+    report(f"  [new]  {destination.name} created from {name}")
+    return True
+
+
+def install_audiotee(report: Report) -> bool:
+    """Clone and build the system-audio capture binary if it is not built."""
+    if AUDIOTEE.exists():
+        report("  [ok]   audiotee already built")
+        return False
+    checkout = VENDOR / "audiotee"
+    if not checkout.exists():
+        report("  ...    cloning audiotee")
+        VENDOR.mkdir(parents=True, exist_ok=True)
+        _run(["git", "clone", "--depth", "1", AUDIOTEE_REPO, str(checkout)])
+    report("  ...    building audiotee (swift, ~30s)")
+    _run(["swift", "build", "-c", "release"], cwd=checkout)
+    if not AUDIOTEE.exists():
+        raise RuntimeError(f"swift build finished but {AUDIOTEE} is missing")
+    report("  [new]  audiotee built")
+    return True
+
+
+def install_vad(report: Report) -> bool:
+    """Download the voice-activity-detection model."""
+    if VAD_MODEL.exists():
+        report("  [ok]   speech detector already present")
+        return False
+    report("  ...    downloading speech detector (2 MB)")
+    _download(VAD_URL, VAD_MODEL)
+    report("  [new]  speech detector downloaded")
+    return True
+
+
+def install_sensevoice(report: Report) -> bool:
+    """Download and extract the optional SenseVoice recogniser."""
+    if (SENSE_VOICE_DIR / "model.onnx").exists():
+        report("  [ok]   SenseVoice already present")
+        return False
+    archive = MODELS / Path(SENSEVOICE_URL).name
+    if not archive.exists():
+        report("  ...    downloading SenseVoice (929 MB, this takes a while)")
+        _download(SENSEVOICE_URL, archive)
+    report("  ...    extracting SenseVoice")
+    with tarfile.open(archive) as bundle:
+        bundle.extractall(MODELS, filter="data")
+    archive.unlink(missing_ok=True)
+    report("  [new]  SenseVoice installed")
+    return True
+
+
+#: Where the `meet` launcher is written. Honours MEET_BIN for unusual setups.
+LAUNCHER_DIR = Path(os.environ.get("MEET_BIN", Path.home() / ".local/bin"))
+LAUNCHER_NAME = "meet"
+
+#: Lets a re-run recognise its own launcher and refuse to clobber a stranger's.
+LAUNCHER_MARKER = "# generated by `meet setup`"
+
+
+def launcher_script(interpreter: Path) -> str:
+    """A wrapper that runs the CLI through `interpreter` from any directory."""
+    return (
+        "#!/usr/bin/env bash\n"
+        f"{LAUNCHER_MARKER}\n"
+        "set -euo pipefail\n"
+        f'exec "{interpreter}" -m meet.cli "$@"\n'
+    )
+
+
+def on_path(directory: Path, path_value: str) -> bool:
+    """Whether `directory` is on the given PATH."""
+    return str(directory) in path_value.split(os.pathsep)
+
+
+def install_launcher(report: Report) -> bool:
+    """Put a `meet` command on PATH so the tool runs from any directory.
+
+    Uses the interpreter running setup, which is the project's own virtualenv, so
+    the launcher keeps working regardless of where the project was cloned.
+    """
+    target = LAUNCHER_DIR / LAUNCHER_NAME
+    script = launcher_script(Path(sys.executable))
+    if target.exists() and LAUNCHER_MARKER not in target.read_text(encoding="utf-8"):
+        report(f"  [skip] {target} exists and was not created here; leaving it alone")
+        return False
+    if target.exists() and target.read_text(encoding="utf-8") == script:
+        report(f"  [ok]   launcher already installed at {target}")
+        return False
+    LAUNCHER_DIR.mkdir(parents=True, exist_ok=True)
+    target.write_text(script, encoding="utf-8")
+    target.chmod(0o755)
+    report(f"  [new]  launcher installed at {target}")
+    if not on_path(LAUNCHER_DIR, os.environ.get("PATH", "")):
+        report(f"  [note] {LAUNCHER_DIR} is not on your PATH -- add this to your shell:")
+        report(f'         export PATH="{LAUNCHER_DIR}:$PATH"')
+    return True
+
+
+def prefetch_models(report: Report) -> int:
+    """Download the recognising and summarising models.
+
+    Several gigabytes with the default models, and already-cached ones return
+    immediately, so this is safe to re-run.
+
+    A failure here does not abort setup: the models download on demand anyway, so
+    a network problem should not undo the rest of an otherwise successful install.
+    It is still counted and reported, so it cannot pass unnoticed.
+
+    Returns:
+        How many models failed to download.
+    """
+    failures = 0
+    for label, model_id in (("recogniser", ASR_MODEL_ID), ("summariser", SUMMARY_MODEL_ID)):
+        report(f"  ...    fetching {label}: {model_id}")
+        try:
+            _run(
+                [
+                    "uv",
+                    "run",
+                    "--isolated",
+                    "--quiet",
+                    "--with",
+                    "huggingface-hub",
+                    "python",
+                    "-c",
+                    f"from huggingface_hub import snapshot_download;"
+                    f"snapshot_download({model_id!r})",
+                ]
+            )
+        except RuntimeError as error:
+            failures += 1
+            report(f"  [FAIL] {label} did not download: {error}")
+            report("         it will download on first use, or re-run `meet setup`")
+        else:
+            report(f"  [ok]   {label} ready")
+    return failures
+
+
+def run(
+    report: Report,
+    with_sensevoice: bool = False,
+    prefetch: bool = True,
+    launcher: bool = True,
+) -> int:
+    """Perform setup, reporting each step.
+
+    Args:
+        report: Where to write progress lines.
+        with_sensevoice: Also fetch the optional 929 MB SenseVoice model.
+        prefetch: Download the recognising and summarising models now.
+        launcher: Install a `meet` command on PATH.
+
+    Returns:
+        How many steps failed, so the caller can exit non-zero.
+    """
+    report(f"project root: {ROOT}")
+    report("configuration:")
+    copy_template(DOTENV_EXAMPLE, ROOT / DOTENV_NAME, report)
+    if GLOSSARY_FILE.exists():
+        report(f"  [ok]   {GLOSSARY_FILE.name} already exists")
+    else:
+        ensure_glossary_file()
+        report(f"  [new]  {GLOSSARY_FILE.name} created from the example")
+
+    report("system audio capture:")
+    install_audiotee(report)
+
+    report("models:")
+    install_vad(report)
+    if with_sensevoice:
+        install_sensevoice(report)
+    else:
+        report("  [skip] SenseVoice (929 MB) -- add --with-sensevoice if you want it")
+    failures = 0
+    if prefetch:
+        report("  ...    the recognising and summarising models are several GB in")
+        report("         total; skip with --no-prefetch to fetch them on first use")
+        failures += prefetch_models(report)
+    else:
+        report("  [skip] models -- they download on first use instead")
+
+    report("command:")
+    if launcher:
+        install_launcher(report)
+    else:
+        report("  [skip] launcher -- run the tool with `uv run meet`")
+
+    report("")
+    if failures:
+        report(f"setup finished with {failures} failed download(s); see above")
+    report("next: grant your terminal Microphone and Screen & System Audio Recording")
+    report("      permissions, restart it, then run `meet doctor`")
+    return failures
