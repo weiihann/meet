@@ -106,13 +106,30 @@ def default_input_name() -> str:
     return ""
 
 
-def resolve_input() -> tuple[str, int]:
-    """Return the (name, avfoundation index) to record the microphone from."""
+def candidate_order(devices: dict[str, int], default_name: str) -> list[int]:
+    """Indices to try, most preferred first."""
+    preferred = pick_input_index(devices, default_name)
+    return [preferred, *sorted(i for i in devices.values() if i != preferred)]
+
+
+def resolve_input(verify: bool = False) -> tuple[str, int]:
+    """Return the (name, avfoundation index) to record the microphone from.
+
+    Args:
+        verify: Record briefly from each candidate and choose the first that
+            actually delivers audio. Worth the second or so it costs before a
+            meeting: the system default is not necessarily usable -- a MacBook
+            with the lid closed reports its built-in microphone as the default
+            and then returns pure silence -- and an empty microphone track is
+            only discoverable afterwards, when the meeting is over.
+    """
     devices = list_input_devices()
-    default_name = default_input_name()
-    index = pick_input_index(devices, default_name)
-    name = next((n for n, i in devices.items() if i == index), f"index {index}")
-    return name, index
+    order = candidate_order(devices, default_input_name())
+    chosen = order[0]
+    if verify:
+        chosen = next((index for index in order if probe_input(index)), order[0])
+    name = next((n for n, i in devices.items() if i == chosen), f"index {chosen}")
+    return name, chosen
 
 
 def ffmpeg_decode_args(path: str | Path) -> list[str]:
@@ -150,10 +167,11 @@ def duration(samples: np.ndarray) -> float:
 
 #: How long to record when testing an input device.
 #:
-#: Must comfortably exceed Bluetooth HFP negotiation, which takes one to two
-#: seconds: a headset probed for only a second returns its start-up silence and
-#: looks broken when it is fine.
-PROBE_SECONDS = 3.0
+#: Half a second suffices because the test is for *exact* zeros, which needs no
+#: settling time: a working device carries dither immediately, and measurement
+#: showed identical verdicts at 0.5s, 1s and 2s. Keeping it short is what makes
+#: probing affordable during `meet start`.
+PROBE_SECONDS = 0.5
 
 
 def probe_input(index: int, seconds: float = PROBE_SECONDS) -> bool:

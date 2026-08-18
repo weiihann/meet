@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from meet.audio import (
+    candidate_order,
     ffmpeg_decode_args,
     is_digital_silence,
     parse_avfoundation_devices,
@@ -35,6 +36,21 @@ class TestParseAvfoundationDevices:
 
     def test_empty_input_gives_nothing(self):
         assert parse_avfoundation_devices("") == {}
+
+
+class TestCandidateOrder:
+    devices = {"MacBook Pro Microphone": 0, "WH-1000XM6": 1, "UGREEN Camera 4K": 2}
+
+    def test_tries_the_system_default_first(self):
+        assert candidate_order(self.devices, "WH-1000XM6")[0] == 1
+
+    def test_offers_every_device_as_a_fallback(self):
+        """A dead default must not strand us; a lid-closed MacBook mic is dead."""
+        assert sorted(candidate_order(self.devices, "MacBook Pro Microphone")) == [0, 1, 2]
+
+    def test_lists_each_device_exactly_once(self):
+        order = candidate_order(self.devices, "UGREEN Camera 4K")
+        assert len(order) == len(set(order)) == 3
 
 
 class TestPickInputIndex:
