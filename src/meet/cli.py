@@ -145,13 +145,9 @@ def cmd_process(args: argparse.Namespace) -> int:
 
 
 def cmd_devices(_args: argparse.Namespace) -> int:
-    chosen_name, chosen_index = resolve_input(verify=True)
     for name, index in sorted(list_input_devices().items(), key=lambda kv: kv[1]):
-        status = "signal" if probe_input(index) else "SILENT"
-        marker = "  <- would record from this" if index == chosen_index else ""
-        print(f"  [{index}] {name:28} {status}{marker}")
-    if chosen_name:
-        print(f"\nselected: {chosen_name}")
+        print(f"  [{index}] {name}")
+    print(f"would record from: {resolve_input()[0]}")
     return 0
 
 
@@ -170,7 +166,7 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
         print(f"  [{'ok' if ok else 'MISSING'}] {label}: {path}")
     print(f"  glossary terms: {len(load_terms())}")
     try:
-        name, index = resolve_input(verify=True)
+        name, index = resolve_input()
         if probe_input(index):
             print(f"  [ok] microphone: {name} (index {index}) -- signal detected")
         else:
