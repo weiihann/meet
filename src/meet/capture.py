@@ -71,7 +71,9 @@ def start(name: str | None = None) -> dict:
     directory = RECORDINGS / slug
     directory.mkdir(parents=True, exist_ok=True)
 
-    device_name, device_index = resolve_input()
+    # Verify before committing: a default device that returns silence would
+    # otherwise cost the whole meeting's microphone track.
+    device_name, device_index = resolve_input(verify=True)
 
     system_pid = _spawn(
         [str(AUDIOTEE), "--sample-rate", str(SAMPLE_RATE)],

@@ -3,7 +3,7 @@
 from datetime import date
 
 from meet.glossary import context_prompt, parse_terms
-from meet.summarize import build_prompt, render_note, safe_title
+from meet.summarize import build_prompt, note_path, render_note, safe_title
 
 WHEN = date(2026, 8, 17)
 
@@ -18,6 +18,18 @@ class TestSafeTitle:
 
     def test_keeps_mandarin_intact(self):
         assert safe_title("跨链 bridge 讨论") == "跨链 bridge 讨论"
+
+
+class TestNotePath:
+    def test_filename_uses_the_vault_s_compact_date(self):
+        """The vault's own notes are named "20260817 ...", with no dashes."""
+        assert note_path(WHEN, "Bridge sync").endswith("/20260817 Meeting - Bridge sync.md")
+
+    def test_lands_in_the_notes_folder(self):
+        assert "/Notes/" in note_path(WHEN, "x")
+
+    def test_sanitises_the_title_into_the_filename(self):
+        assert note_path(WHEN, "BSC/opBNB").endswith("20260817 Meeting - BSC-opBNB.md")
 
 
 class TestRenderNote:

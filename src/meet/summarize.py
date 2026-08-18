@@ -83,9 +83,15 @@ def safe_title(title: str) -> str:
     return cleaned or "Untitled"
 
 
+#: Filename date format, matching the vault's existing notes ("20260817 ...").
+#: The `created` frontmatter field stays ISO, as the vault's templates have it.
+FILENAME_DATE = "%Y%m%d"
+
+
 def note_path(when: date, title: str) -> str:
     """Where the finished note belongs inside the vault."""
-    return str(VAULT / NOTES_SUBDIR / f"{when.isoformat()} Meeting - {safe_title(title)}.md")
+    stamp = when.strftime(FILENAME_DATE)
+    return str(VAULT / NOTES_SUBDIR / f"{stamp} Meeting - {safe_title(title)}.md")
 
 
 def render_note(when: date, title: str, body: str, transcript: str, org: str = "") -> str:
